@@ -3,6 +3,9 @@ package deloitte.kudan.ar;
 import android.content.Intent;
 import android.os.Handler;
 import android.provider.Settings;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
 import android.support.v4.view.GestureDetectorCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -15,9 +18,12 @@ import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.widget.SlidingDrawer;
+import android.widget.TableLayout;
+import android.widget.TableRow;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.ArrayList;
 import java.util.Calendar;
 
 import deloitte.kudan.ar.util.CustomTextAnimator;
@@ -30,37 +36,56 @@ import eu.kudan.kudan.ARImageNode;
 import eu.kudan.kudan.ARImageTrackable;
 import eu.kudan.kudan.ARImageTracker;
 
-public class MainActivity extends ARActivity{
+public class MainActivity extends ARActivity implements RecognitionListener{
     private String deviceName = android.os.Build.MODEL;
     //private String deviceName = Settings.System.getString(getContentResolver(), "device_name");
     private static final String TAG = MainActivity.class.getSimpleName();
     //private GestureDetectorCompat gestureDetect;
 
+    private SpeechRecognizer speech = SpeechRecognizer.createSpeechRecognizer(this);
+    private Intent recognizerIntent;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Log.d(TAG, "In onCreate() method");
-        // Comment this out for the time being unless you plan to create UI elements
+
         setContentView(R.layout.activity_main);
 
+        //set API key obtained during registration
         ARAPIKey key = ARAPIKey.getInstance();
         Log.d(TAG, "Got ARAPIKey instance");
         key.setAPIKey("DdrfdSm3TE3XdO0IMuczUOMMB7Evph/4heQk0A8hCicbifpi/Xhvvxr/mEyfBkdJhBZrgyCQbBXIsssyvrw7CruPpfF/x9E4kjJPF1d+sL6y/lQqE1U+V51sMMnxeGV2xIYgtMXCHdRvIiuE9pfFlB6KdDM6a0jxMdYuZwSBZm8BFZ52kgV1YaCwOn/YpUcwKfn+BQ0Q14P32pl5djMwi5Ze77Z4ms8soJwDIPQSxWcOv6vxkgbk2UfuCqr0fLYVIIKZt/MOAOZsBFO69MVAa02c7cTigyJA6QsOK9Fjl5kAGja8/SYyW/YLOoGJQcn/nmF27vASAH+IyoOezCeg/AGVn9tF2x6votRcG9dcPUJ/080rbPlApRgWMilkFzSS8LaQBeo8QVfBNCwXYzKpbjBrSk5Av6YZs8qlAN7oGLsg/mpMtR2bd1qCek/V388a0FIWVA7+O0mUbgrxfHiJqQT6/LD0x8iumtuQ0DsgpOFWsKG6lp0ePw5cZE7lLUxlKl5oY+2bd0URn/O3YoV5Dx2Zs5FvOuXoa89TN04C3jytSNNvY+Jr/bw4N84oajVtWg9dgOIdWYLygY1/7nFrBHs4J9am0x6aAw9AqUiy1JDYze70OxlIy8Jk1A4RnNtbPeFicKvu8vTNZl8pX7M1lVaKElBndOLiZ+JxOAdyRkk=");
         Log.d(TAG, "After setting API Key");
 
-        //This is for Marshmallow upgrade...
+        //This is for Marshmallow upgrade...need camera and recording permissions
         MarshMallowPermission marshMallowPermission = new MarshMallowPermission(this);
         if (!marshMallowPermission.checkPermissionForCamera()) {
             Log.d(TAG, "No permission for camera...Requesting..");
             marshMallowPermission.requestPermissionForCamera();
         }
+        if (!marshMallowPermission.checkPermissionForRecord()) {
+            Log.d(TAG, "No permission for recording...Requesting..");
+            marshMallowPermission.requestPermissionForRecord();
+        }
 
         // Create gesture recogniser to start and stop arbitrack
         //gestureDetect = new GestureDetectorCompat(this,this);
-
+        Log.d(TAG, "Before calling showGreetingAndPickList()");
         showGreetingAndPickList();
-
+        Log.d(TAG, "After calling showGreetingAndPickList()");
+        /*//init speech recog
+        Log.d(TAG, "Before calling initSpeechRecognition()");
+        initSpeechRecognition();
+        Log.d(TAG, "After calling initSpeechRecognition()");
+        Log.d(TAG, "Before calling startListening()");
+        speech.startListening(recognizerIntent);
+        Log.d(TAG, "Before calling startListening()");
+        Log.d(TAG, "Before calling stopListening()");
+        speech.stopListening();
+        Log.d(TAG, "After calling stopListening()");*/
     }
+
 
     @Override
     public void setup()
@@ -190,6 +215,8 @@ public class MainActivity extends ARActivity{
 
 
     private void showGreetingAndPickList(){
+        Log.d(TAG, "Begin showGreetingAndPickList()");
+        //adjust greeting according to the time of day
         Calendar c = Calendar.getInstance();
         int timeOfDay = c.get(Calendar.HOUR_OF_DAY);
         String wish = "";
@@ -209,13 +236,131 @@ public class MainActivity extends ARActivity{
         }
 
         TextView mainView = (TextView)findViewById(R.id.textView5);
-        mainView.setMovementMethod(new ScrollingMovementMethod());
+        mainView.setMovementMethod(new ScrollingMovementMethod());//this is to enable scrollable text view field
 
-        CustomTextAnimator animator = new CustomTextAnimator(mainView, new String[]{
+        TableLayout table = (TableLayout) findViewById(R.id.pickListTable);
+        table.setAlpha(0.0f);//make table invisible initially
+
+        TextView tapView = (TextView)findViewById(R.id.textView);
+        /*tapView.setOnTouchListener(new View.OnTouchListener() {
+            public boolean onTouch(View v, MotionEvent event) {
+                Log.d(TAG, "Touch input working..");
+                return true;
+            }
+        });*/
+        tapView.setEnabled(false);
+        tapView.setAlpha(0.0f);
+
+        CustomTextAnimator animator = new CustomTextAnimator(mainView, tapView, new String[]{
                 wish + " " + deviceName,
                 "You have 2 picking items in your list..Do you want to proceed?"});
 
         animator.startAnimation();
+        Log.d(TAG, "End showGreetingAndPickList()");
     }
 
+    public void initSpeechRecognition(){
+        Log.d(TAG, "Begin initSpeechRecognition()");
+        speech.setRecognitionListener(this);
+        recognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE,
+                "en");
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE,
+                this.getPackageName());
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_WEB_SEARCH);
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+        Log.d(TAG, "End initSpeechRecognition()");
+    }
+
+    @Override
+    public void onBeginningOfSpeech() {
+    }
+    @Override
+    public void onBufferReceived(byte[] buffer) {
+    }
+    @Override
+    public void onEndOfSpeech() {
+    }
+    @Override
+    public void onError(int errorCode) {
+        switch (errorCode) {
+            case SpeechRecognizer.ERROR_AUDIO:
+                Log.d(TAG, "Audio Error");
+                break;
+            case SpeechRecognizer.ERROR_CLIENT:
+                Log.d(TAG, "Client Error");
+                break;
+            case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
+                Log.d(TAG, "Insufficient Permission Error");
+                break;
+            case SpeechRecognizer.ERROR_NETWORK:
+                Log.d(TAG, "Network Error");
+                break;
+            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT:
+                Log.d(TAG, "Network Timeout Error");
+                break;
+            case SpeechRecognizer.ERROR_NO_MATCH:
+                Log.d(TAG, "No Match Error");
+                break;
+            case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:
+                Log.d(TAG, "Recognizer Busy Error");
+                break;
+            case SpeechRecognizer.ERROR_SERVER:
+                Log.d(TAG, "Server Error");
+                break;
+            case SpeechRecognizer.ERROR_SPEECH_TIMEOUT:
+                Log.d(TAG, "Timeout Error");
+                break;
+            default:
+                Log.d(TAG, "Understanding Error");
+                break;
+        }
+    }
+    @Override
+    public void onEvent(int arg0, Bundle arg1) {
+    }
+    @Override
+    public void onPartialResults(Bundle arg0) {
+    }
+    @Override
+    public void onReadyForSpeech(Bundle arg0) {
+    }
+    @Override
+    public void onResults(Bundle results) {
+        ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+        Log.d(TAG, "Found results: " + matches.get(0));
+    }
+    @Override
+    public void onRmsChanged(float rmsdB) {
+    }
+
+    public void onClick(View v){
+        Log.d(TAG, "In onClick() method..");
+        TableLayout table = (TableLayout) findViewById(R.id.pickListTable);
+        table.setAlpha(1.0f);
+        //dynamically add rows
+        for(int i=0;i<2;i++){
+            // create a new TableRow
+            TableRow row = new TableRow(this);
+            // create a new TextView for showing xml data
+            TextView t1 = new TextView(this);
+            // set the text to "text xx"
+            t1.setText("Order " + i);
+            // add the TextView  to the new TableRow
+            row.addView(t1);
+            TextView t2 = new TextView(this);
+            // set the text to "text xx"
+            t2.setText("Item " + i);
+            // add the TextView  to the new TableRow
+            row.addView(t2);
+            TextView t3 = new TextView(this);
+            // set the text to "text xx"
+            t3.setText("10");
+            // add the TextView  to the new TableRow
+            row.addView(t3);
+            // add the TableRow to the TableLayout
+            table.addView(row, new TableLayout.LayoutParams(TableLayout.LayoutParams.WRAP_CONTENT, TableLayout.LayoutParams.WRAP_CONTENT));
+        }
+    }
 }
