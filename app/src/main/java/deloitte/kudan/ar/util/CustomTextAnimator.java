@@ -10,6 +10,7 @@ import android.widget.TextView;
 
 public class CustomTextAnimator extends Animation{
     TextView blobText;
+    TextView tapAndProceedView;
     public String[] text = new String[] { "" };
     public int position = 0;
     Animation fadeiInAnimationObject;
@@ -20,13 +21,14 @@ public class CustomTextAnimator extends Animation{
     int delayDuration;
     int displayFor;
 
-    public CustomTextAnimator(TextView textV, String[] textList)
+    public CustomTextAnimator(TextView textV, TextView tapView, String[] textList)
     {
-        this(textV,700,1000,2000, textList);
+        this(textV, tapView, 700,1000,2000, textList);
     }
-    public CustomTextAnimator(TextView textView, int fadeEffectDuration, int delayDuration, int displayLength, String[] textList)
+    public CustomTextAnimator(TextView textView, TextView tapView, int fadeEffectDuration, int delayDuration, int displayLength, String[] textList)
     {
         blobText = textView;
+        tapAndProceedView = tapView;
         text = textList;
         this.fadeEffectDuration = fadeEffectDuration;
         this.delayDuration = delayDuration;
@@ -77,6 +79,8 @@ public class CustomTextAnimator extends Animation{
                 // TODO Auto-generated method stub
                 if(position>=text.length)
                 {
+                    tapAndProceedView.setEnabled(true);
+                    tapAndProceedView.setAlpha(1.0f);
                     return;
                 }
                 blobText.startAnimation(fadeOutAnimationObject);
